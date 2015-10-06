@@ -19,7 +19,7 @@ import sys
 #import matplotlib.pyplot as plt
 
 
-'''
+
 # First we need a test network
 
 test_g = nx.MultiDiGraph()
@@ -137,7 +137,7 @@ bias_training_data.append(exp_dataset_3)
 bias_training_data.append(exp_dataset_4)
 bias_training_data.append(exp_dataset_5)
 
-'''
+
 
 class RPropMinusTrainer_Evolved(RPropMinusTrainer):
 	def train(self):
@@ -165,16 +165,84 @@ class RPropMinusTrainer_Evolved(RPropMinusTrainer):
 class gene_Neuron_Cluster:
 	def __init__(self, gml_path):
 		self.gml_path = gml_path
-		self.ann_graph = nx.read_gml(gml_path, relabel=True)
+		self.gml = nx.read_gml(gml_path, relabel=True)
 
 	def add_xml_file(self, xml_filepath):
 		self.xml_filepath = xml_filepath
-		self.annet = NetworkReader.readFrom(self.xml_filepath)
-		print 'Number of inputs:' , str(len(self.annet.inputbuffer[0]))
+		self.xml = NetworkReader.readFrom(self.xml_filepath)
+		print 'Number of inputs:' , str(len(self.xml.inputbuffer[0]))
 
+	def add_organism(self, organism):
+		self.organism = organism
 
 	def predict_output(self, input_dict): 
-		return self.annet.activate(input_dict)
+		input_list = input_dict
+		return self.xml.activate(input_list)
+
+	def input_list(self):
+			
+		#print self.gml.nodes(data=True)
+
+		#for node in self.gml.nodes(data=True):
+		#print '\n'
+		out_degree_dict = self.gml.out_degree()
+		in_degree_dict = self.gml.in_degree()
+
+		input_nodes = []
+
+		for key in out_degree_dict.keys():
+			if out_degree_dict[key] > 0 and in_degree_dict[key] == 0:
+				input_nodes.append(key)
+
+		#print input_nodes
+
+		# Dealing with the gml network
+
+		gml_dict = {}
+
+		for gml_gene in input_nodes:
+			edge_weights = []
+			for g_edge in self.gml[gml_gene]:
+				edge_weights.append(str(self.gml[gml_gene][g_edge]['weight'])[:6])
+			gml_dict[gml_gene] = edge_weights
+
+		#print gml_dict
+		#print '\n'
+
+		# Dealing with the xml network
+
+		xml_dict = {}
+
+		for mod in self.xml.modules:
+			if mod.name == 'Input_layer':
+				for conn in self.xml.connections[mod]:
+					#print dir(conn)
+					#print conn.params
+					#print len(conn.params)
+					for cc in range(len(conn.params)):
+						#print conn.whichBuffers(cc), conn.params[cc]
+						#print conn.whichBuffers(cc)[0], conn.params[cc]
+
+						order_string = str(conn.whichBuffers(cc)[0])
+
+						if order_string in xml_dict.keys():
+							xml_dict[order_string].append(str(conn.params[cc])[:6])
+						else:
+							ent_list = [str(conn.params[cc])[:6]]
+							xml_dict[order_string] = ent_list
+		#print xml_dict
+
+		mapping_dict = {}
+
+		for in_gene in gml_dict.keys():
+			for in_number in xml_dict.keys():
+				if collections.Counter(gml_dict[in_gene]) == collections.Counter(xml_dict[in_number]):
+					#print in_gene, in_number
+					mapping_dict[in_gene] = in_number
+
+		return mapping_dict
+
+
 
 
 def parallel_function(f):
@@ -191,7 +259,6 @@ def parallel_function(f):
         return cleaned
     from functools import partial
     return partial(easy_parallize, f)
-
 
 
 def pesos_conexiones(n):
@@ -328,7 +395,7 @@ def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold
 	return sub_graph.nodes()
 	'''
 
-def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val):
+def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, train_for):
 
 	"Creates and trains a network that is created to reflect the structure of the hypothesized network"
 
@@ -481,11 +548,13 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val):
 	result_list = []
 	best_run_error = 1000
 
+	train_for = int(train_for)
+
 	boot_count = 0
 	while boot_count < boot_val:
 		print '\n'
 		print 'Bootstrap round ' + str(boot_count + 1)
-		trainer.trainEpochs(500)
+		trainer.trainEpochs(train_for)
 		this = get_nn_details(regulatory_network)
 		# Corrected error
 		
@@ -930,10 +999,11 @@ def plot_gene_vs_TF(dataset, q_gene, q_tf):
 
 	plt.show()
 
-def create_optimized_network(organism_network, shared_dataset, bootstrap_value, result_file):
+def create_optimized_network(organism_network, shared_dataset, bootstrap_value, train_for, result_file, *gene_list_path):
 	'''Analyze all genes in a network and create ANNs. Outouts are a gml and xml per gene, and a report csv file with per gene info on errors etc'''
 	
 	# Output csv of the errors and the number of input nodes
+
 
 	summary_file = open(result_file, 'w')
 
@@ -943,16 +1013,28 @@ def create_optimized_network(organism_network, shared_dataset, bootstrap_value, 
 	# What the label must contain
 	label_val = 'gene'
 
-	full_list = organism_network.nodes()
+	if len(gene_list_path[0]) > 0:
+		gene_list_file = open(gene_list_path[0], 'r')
+		
+		# Filter full list based on label criteria
+		for line in gene_list_file:
+			line = line.strip('\n')
+			if label_val in organism_network.node[line]['type']:
+				list_of_nodes_for_analysis.append(line)
 
-	# Filter full list based on label criteria
+	else:
+		# What the label must contain
+		full_list = organism_network.nodes()
 
-	for gene_node in full_list:
-		if label_val in organism_network.node[gene_node]['type']:
-			list_of_nodes_for_analysis.append(gene_node)
+		# Filter full list based on label criteria
+		for gene_node in full_list:
+			if label_val in organism_network.node[gene_node]['type']:
+				list_of_nodes_for_analysis.append(gene_node)
+
+	print list_of_nodes_for_analysis
 
 	for target_gene_node in list_of_nodes_for_analysis:
-		analysis_output = ANN_blind_analysis_multi_hidden(organism_network, target_gene_node, shared_dataset, bootstrap_value)
+		analysis_output = ANN_blind_analysis_multi_hidden(organism_network, target_gene_node, shared_dataset, bootstrap_value, train_for)
 		print analysis_output
 		writen_line = target_gene_node + ',' + str(analysis_output[1]) + ',' + str(analysis_output[2]) + '\n'
 		print writen_line
@@ -1054,16 +1136,20 @@ def create_optimized_network_parra(organism_network, shared_dataset, bootstrap_v
 
 # -------------------------  Working Area ------------------------- 
 
+'''
 
 print "importing dataset"
 
-input_dataset = import_training_data("../experimental_data/Rv1934c_1_25.pcl")
+#input_dataset = import_training_data("../experimental_data/Rv1934c_1_25.pcl")
+
+input_dataset = import_training_data('/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/expression_data/Rv1934c_1_75.pcl')
 
 print "importing dataset - complete"
 
 print "Loading network"
 
-H37Rv_TF_network = nx.read_gml('../networks/S507_S5537_noPPI_net.gml', relabel=True)
+#H37Rv_TF_network = nx.read_gml('../networks/S507_S5537_noPPI_net.gml', relabel=True)
+H37Rv_TF_network = nx.read_gml('/Users/panix/Dropbox/Programs/tools/Cell/Cell_core/S507_S5537_noPPI_net.gml', relabel=True)
 
 print "Loading network - complete"
 
@@ -1071,19 +1157,26 @@ print "Starting analysis"
 
 N_H_Layers = 2
 
-create_optimized_network(H37Rv_TF_network, input_dataset, 6, 'test_run_3.csv')
+create_optimized_network(H37Rv_TF_network, input_dataset, 6, 100, 'parra_test_run.csv', 'gene_list.txt')
 
 print "Analysis complete"
 
 print "tock"
 
-# -------------------------  Testing Area ------------------------- 
-
 '''
 
+# -------------------------  Testing Area ------------------------- 
+'''
+
+
+# For testing the recovery of info from generated ANNs
+
+Rv1990c_path = "/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/h37rv_ANN/neural_cell/fullrun_3/rv1990c_trained_net.xml"
+Rv1990c_gml_path = "/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/h37rv_ANN/neural_cell/fullrun_3/rv1990c_trained_net_thres.gml"
 #a_dataset = import_training_data("/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/expression_data/Rv2429.pcl")
 #a_dataset = import_training_data("test.pcl")
 #test_g = nx.read_gml('test.gml', relabel=True)
+
 
 
 #print H37Rv_TF_network.node[1]
@@ -1125,16 +1218,49 @@ print "Loading network"
 
 #H37Rv_TF_network = nx.read_gml('/Users/panix/Dropbox/Programs/tools/Cell/Cell_core/TF_network.gml',  relabel=True)
 
-#RV1587c_net = gene_Neuron_Cluster('rv1587c_trained_net_thres.gml')
-#RV1587c_net.add_xml_file('rv1587c_trained_net.xml')
-#print RV1587c_net.predict_output([9,3,4,6])
+RV1990c_net = gene_Neuron_Cluster('rv1990c_trained_net_thres.gml')
+RV1990c_net.add_xml_file('rv1990c_trained_net.xml')
+print RV1990c_net.predict_output([1.59,0.60,-0.28])
 
+print RV1990c_net.input_list()
+
+'''
 
 
 print "Loading network - complete"
 
 
-#RV1026 = ANN_blind_analysis(test_g, "RV1026", bias_training_data, 2)
+RV1026 = ANN_blind_analysis_multi_hidden(test_g, "RV1026", bias_training_data, 4, 500)
+
+'''
+exp_dataset_5["rv0102"] = '2'
+exp_dataset_5["rv3056"] = '6'
+exp_dataset_5["rv0912"] = '10'
+exp_dataset_5["rv0007"] = '4'
+exp_dataset_5["rv1026"] = '46'
+
+
+exp_dataset_4["rv0102"] = '2'
+exp_dataset_4["rv3056"] = '6'
+exp_dataset_4["rv0912"] = '4'
+exp_dataset_4["rv0007"] = '4'
+exp_dataset_4["rv1026"] = '19'
+
+'''
+
+
+
+RV1026_net = gene_Neuron_Cluster('rv1026_trained_net_thres.gml')
+RV1026_net.add_xml_file('rv1026_trained_net.xml')
+
+print RV1026_net.predict_output([4,6,10,2])
+# Expect 46
+
+print RV1026_net.predict_output([4,6,4,2])
+# Expect 19
+
+print RV1026_net.input_list()
+
 #print 'returned result'
 #print RV1026
 # Analysis
@@ -1162,7 +1288,7 @@ print "Starting analysis"
 #print Rv0178
 N_H_Layers = 2
 
-create_optimized_network_parra(test_g, bias_training_data, 2, 'test_run_T.csv')
+#create_optimized_network_parra(test_g, bias_training_data, 2, 'test_run_T.csv')
 
 #create_optimized_network(H37Rv_TF_network, input_dataset, 6, 'test_run_2.csv')
 
@@ -1173,7 +1299,6 @@ print "Analysis complete"
 #print Rv2626c
 #print Rv3133c
 #print Rv1934c
-'''
 
 print "tock"
 
