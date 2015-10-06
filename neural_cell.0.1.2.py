@@ -395,6 +395,36 @@ def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold
 	return sub_graph.nodes()
 	'''
 
+
+
+def filter_expression_dataset(gene_list, dataset_list, *low_sig_thres):
+
+	filtered_dataset_list = []
+
+	for experiment in dataset_list:
+		for gene in experiment.keys():
+			if gene not in gene_list:
+				del experiment[gene]
+
+	filtered_dataset_list = dataset_list
+
+	if len(low_sig_thres[0]) > 0:
+		extra_filtered_dataset_list = []
+		#print 'filtering'
+		for experiment in filtered_dataset_list:
+			total = 0
+			for gene in experiment.keys():
+				total += float(experiment[gene])
+			#print total
+			if total > float(low_sig_thres[0]):
+				extra_filtered_dataset_list.append(experiment)
+		filtered_dataset_list = extra_filtered_dataset_list
+
+
+	return filtered_dataset_list
+
+
+
 def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, train_for):
 
 	"Creates and trains a network that is created to reflect the structure of the hypothesized network"
@@ -444,6 +474,7 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 
 	print len(data_node_list)
 	print data_node_list
+
 
 	# Need to add +1 node to the input layer that represents the "other" control variables
 
@@ -502,6 +533,9 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 	data_node_list.append(a_gene)
 	print 'node list contains: '
 	print data_node_list
+
+	# An additional filtering step to slim down the dataset and remove low signal data -------------------------------------------< FILTER
+	a_dataset = filter_expression_dataset(data_node_list, a_dataset, '0.0')
 
 	# This is where the ordered dict needs to be used to link the input name to the input node.
 
@@ -1230,7 +1264,7 @@ print RV1990c_net.input_list()
 print "Loading network - complete"
 
 
-RV1026 = ANN_blind_analysis_multi_hidden(test_g, "RV1026", bias_training_data, 4, 500)
+RV1026 = ANN_blind_analysis_multi_hidden(test_g, "RV1026", bias_training_data, 4, 1000)
 
 '''
 exp_dataset_5["rv0102"] = '2'
@@ -1247,8 +1281,6 @@ exp_dataset_4["rv0007"] = '4'
 exp_dataset_4["rv1026"] = '19'
 
 '''
-
-
 
 RV1026_net = gene_Neuron_Cluster('rv1026_trained_net_thres.gml')
 RV1026_net.add_xml_file('rv1026_trained_net.xml')
