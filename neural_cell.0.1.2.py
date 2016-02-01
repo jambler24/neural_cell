@@ -1,3 +1,5 @@
+#!/Users/panix/anaconda/bin/python
+
 print "Tic"
 
 from pybrain.structure import FeedForwardNetwork, SigmoidLayer, LinearLayer
@@ -345,7 +347,7 @@ def get_nn_details(ann):
 				pred_weights.append(conn.params[cc])
 	return pred_weights
 
-def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold):
+def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold, *extra_genes):
 	"Return a list of genes to be used in training"
 	#print full_network.nodes(data=True)
 	
@@ -365,13 +367,15 @@ def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold
 
 	#print full_network.nodes(data=True)
 
-	
+	'''
+	# Removed for now so not to remove edges below the threshold. all TFs are thus included
 	for edge in full_network.edges(data=True):
 		
 		#print "----->" ,edge
-		if edge[2]['weight'] < abs(edge_threshold):
+		if edge[2]['fold_change'] < abs(edge_threshold):
 			full_network.remove_edge(edge[0],edge[1])
-	
+	'''
+
 	#print "------------------"
 	sub_graph = 0
 
@@ -385,6 +389,10 @@ def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold
 	#print all_nodes_list
 	#print set(all_nodes_list)
 	all_nodes_list = list(set(all_nodes_list))
+
+	if len(extra_genes) > 0:
+		all_nodes_list.append(extra_genes)
+
 	return all_nodes_list	
 
 	'''
@@ -398,26 +406,62 @@ def get_sub_list_from_network(origional_network, a_gene, a_label, edge_threshold
 
 
 def filter_expression_dataset(gene_list, dataset_list, *low_sig_thres):
-
+	""" Primary filtering removes data not needed so the next step is not thrown by other genes values """
 	filtered_dataset_list = []
+	
+	#This fitering step needs work, potentially the 'del' function removes the data for all instances
+	# Also needed if subsiquent step of filtering is to have any real effect
+
+	print gene_list
 
 	for experiment in dataset_list:
+		list_genes_only_experiment = {}
 		for gene in experiment.keys():
-			if gene not in gene_list:
-				del experiment[gene]
+			#print gene
+			if gene.lower() in gene_list:
+				#print gene
+				#print experiment[gene]
+				list_genes_only_experiment[gene] = experiment[gene]
+		filtered_dataset_list.append(list_genes_only_experiment)
 
-	filtered_dataset_list = dataset_list
+	
+
+	#filtered_dataset_list = dataset_list
+
+	#print "+++++++++++++++++++++++"
+	#print filtered_dataset_list
+
+	""" Secondary filtering needs revision. perhaps work out the average """
+	# Are smaller values better? In pcl file it seems that value 1 is no change, and values to either side are change. Therefore the threshold should be a max rather
+	# The above made a massive difference increasing the accuracy of the nets
 
 	if len(low_sig_thres[0]) > 0:
 		extra_filtered_dataset_list = []
 		#print 'filtering'
+		number_of_experiments = 0
 		for experiment in filtered_dataset_list:
 			total = 0
+			num_of_included_readings = 0
 			for gene in experiment.keys():
-				total += float(experiment[gene])
-			#print total
-			if total > float(low_sig_thres[0]):
-				extra_filtered_dataset_list.append(experiment)
+				if len(experiment[gene]) > 0:
+					#print "Here"
+					#print experiment[gene]
+					#print "End"
+					abs_experiment = abs(float(experiment[gene]))
+					total += abs_experiment
+					num_of_included_readings += 1
+			print 'total experiment weight'
+			print total
+			if num_of_included_readings > 0:
+				print 'average experiment weight'
+				average_exp_weight = total / num_of_included_readings
+				print average_exp_weight
+				if average_exp_weight < float(low_sig_thres[0]):
+					extra_filtered_dataset_list.append(experiment)
+					number_of_experiments += 1
+		print "number of experiments retained:"
+		# test this part out (vary  cutoff, see effect)
+		print number_of_experiments
 		filtered_dataset_list = extra_filtered_dataset_list
 
 
@@ -433,7 +477,7 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 
 	# retrieving needed parameters from the input network
 
-	upper_case_data_node_list = get_sub_list_from_network(a_network, a_gene, "gene,TF", 1)
+	upper_case_data_node_list = get_sub_list_from_network(a_network, a_gene, "TF", 1)
 
 	# to lower case for everything
 	data_node_list = [x.lower() for x in upper_case_data_node_list]
@@ -442,7 +486,7 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 	# If the target gene is also a TF, remove it from the list as it will be added
 	if a_gene in data_node_list: data_node_list.remove(a_gene)
 
-	print 'what is in data_node_list:'
+	print 'What is in data_node_list:'
 	print data_node_list
 
 	if len(data_node_list) == 0:
@@ -535,11 +579,13 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 	print data_node_list
 
 	# An additional filtering step to slim down the dataset and remove low signal data -------------------------------------------< FILTER
-	a_dataset = filter_expression_dataset(data_node_list, a_dataset, '0.0')
+	a_filtered_dataset = a_dataset
+
+	a_filtered_dataset = filter_expression_dataset(data_node_list, a_filtered_dataset, '0.8')
 
 	# This is where the ordered dict needs to be used to link the input name to the input node.
 
-	for experiment in a_dataset:
+	for experiment in a_filtered_dataset:
 		tf_list = []
 		gene_list = []
 		tf_labels = []
@@ -569,7 +615,7 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 	print 'Network before training'
 	print regulatory_network
 
-	pesos_conexiones(regulatory_network)
+	#pesos_conexiones(regulatory_network)
 	print regulatory_network.outputerror
 
 	#print DS
@@ -927,7 +973,8 @@ def ANN_edge_analysis(a_network, a_gene, a_dataset, boot_val):
 
 	boot_count = 0
 	while boot_count < boot_val:
-		trainer.trainEpochs(1000)
+		#trainer.trainEpochs(1000)
+		trainer.trainUntilConvergence(validationProportion=0.25)
 		print regulatory_network
 		this = get_nn_details(regulatory_network)
 		result_list.append(this)
@@ -1067,8 +1114,13 @@ def create_optimized_network(organism_network, shared_dataset, bootstrap_value, 
 
 	print list_of_nodes_for_analysis
 
+	initial_shared_dataset = shared_dataset
+
 	for target_gene_node in list_of_nodes_for_analysis:
-		analysis_output = ANN_blind_analysis_multi_hidden(organism_network, target_gene_node, shared_dataset, bootstrap_value, train_for)
+		instance_dataset = initial_shared_dataset
+		print "Current gene: ", target_gene_node
+
+		analysis_output = ANN_blind_analysis_multi_hidden(organism_network, target_gene_node, instance_dataset, bootstrap_value, train_for)
 		print analysis_output
 		writen_line = target_gene_node + ',' + str(analysis_output[1]) + ',' + str(analysis_output[2]) + '\n'
 		print writen_line
@@ -1148,6 +1200,7 @@ def create_optimized_network_parra(organism_network, shared_dataset, bootstrap_v
 	print "done"
 
 
+
 # -------------------------  Known Issues  -------------------------
 '''
 1. Different formatting for gene names ("Rv" vs "RV") (Temp fix line 114)
@@ -1170,20 +1223,20 @@ def create_optimized_network_parra(organism_network, shared_dataset, bootstrap_v
 
 # -------------------------  Working Area ------------------------- 
 
-'''
+
 
 print "importing dataset"
 
 #input_dataset = import_training_data("../experimental_data/Rv1934c_1_25.pcl")
 
-input_dataset = import_training_data('/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/expression_data/Rv1934c_1_75.pcl')
+input_dataset = import_training_data('/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/expression_data/Rv1934c_1_25.pcl')
 
 print "importing dataset - complete"
 
 print "Loading network"
 
 #H37Rv_TF_network = nx.read_gml('../networks/S507_S5537_noPPI_net.gml', relabel=True)
-H37Rv_TF_network = nx.read_gml('/Users/panix/Dropbox/Programs/tools/Cell/Cell_core/S507_S5537_noPPI_net.gml', relabel=True)
+H37Rv_TF_network = nx.read_gml('/Users/panix/Dropbox/Programs/tools/Cell/Cell_core/H37Rv_TF_only.gml', relabel=True)
 
 print "Loading network - complete"
 
@@ -1191,13 +1244,13 @@ print "Starting analysis"
 
 N_H_Layers = 2
 
-create_optimized_network(H37Rv_TF_network, input_dataset, 6, 100, 'parra_test_run.csv', 'gene_list.txt')
+create_optimized_network(H37Rv_TF_network, input_dataset, 6, 100, 'filter_test_run.csv', 'xaa')
 
 print "Analysis complete"
 
 print "tock"
 
-'''
+
 
 # -------------------------  Testing Area ------------------------- 
 '''
@@ -1258,7 +1311,7 @@ print RV1990c_net.predict_output([1.59,0.60,-0.28])
 
 print RV1990c_net.input_list()
 
-'''
+
 
 
 print "Loading network - complete"
@@ -1266,7 +1319,7 @@ print "Loading network - complete"
 
 RV1026 = ANN_blind_analysis_multi_hidden(test_g, "RV1026", bias_training_data, 4, 1000)
 
-'''
+
 exp_dataset_5["rv0102"] = '2'
 exp_dataset_5["rv3056"] = '6'
 exp_dataset_5["rv0912"] = '10'
@@ -1280,7 +1333,7 @@ exp_dataset_4["rv0912"] = '4'
 exp_dataset_4["rv0007"] = '4'
 exp_dataset_4["rv1026"] = '19'
 
-'''
+
 
 RV1026_net = gene_Neuron_Cluster('rv1026_trained_net_thres.gml')
 RV1026_net.add_xml_file('rv1026_trained_net.xml')
@@ -1333,4 +1386,4 @@ print "Analysis complete"
 #print Rv1934c
 
 print "tock"
-
+'''
