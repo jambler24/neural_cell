@@ -1,4 +1,4 @@
-#!/Users/panix/anaconda/bin/python
+#!../../bin/python
 
 print "Tic"
 
@@ -703,7 +703,8 @@ def ANN_blind_analysis_multi_hidden(a_network, a_gene, a_dataset, boot_val, trai
 	while boot_count < boot_val:
 		print '\n'
 		print 'Bootstrap round ' + str(boot_count + 1)
-		trainer.trainEpochs(train_for)
+		#trainer.trainEpochs(train_for)
+		trainer.trainUntilConvergence(validationProportion=0.25)
 		this = get_nn_details(regulatory_network)
 		# Corrected error
 		
@@ -914,7 +915,8 @@ def ANN_blind_analysis_single_hidden(a_network, a_gene, a_dataset, boot_val, tra
 	while boot_count < boot_val:
 		print '\n'
 		print 'Bootstrap round ' + str(boot_count + 1)
-		trainer.trainEpochs(train_for)
+		#trainer.trainEpochs(train_for)
+		trainer.trainUntilConvergence(validationProportion=0.25)
 		this = get_nn_details(regulatory_network)
 		# Corrected error
 		
@@ -1117,7 +1119,8 @@ def ANN_blind_analysis_no_hidden(a_network, a_gene, a_dataset, boot_val, train_f
 	while boot_count < boot_val:
 		print '\n'
 		print 'Bootstrap round ' + str(boot_count + 1)
-		trainer.trainEpochs(train_for)
+		#trainer.trainEpochs(train_for)
+		trainer.trainUntilConvergence(validationProportion=0.25)
 		this = get_nn_details(regulatory_network)
 		# Corrected error
 		
@@ -1564,14 +1567,14 @@ print "importing dataset"
 
 #input_dataset = import_training_data("../experimental_data/Rv1934c_1_25.pcl")
 
-input_dataset = import_training_data('/Volumes/HDD/Genomes/M_tuberculosis/H37Rv/expression_data/Rv1934c_1_25.pcl')
+input_dataset = import_training_data('Rv0024.pcl')
 
 print "importing dataset - complete"
 
 print "Loading network"
 
 #H37Rv_TF_network = nx.read_gml('../networks/S507_S5537_noPPI_net.gml', relabel=True)
-H37Rv_TF_network = nx.read_gml('/Users/panix/Dropbox/Programs/tools/Cell/Cell_core/H37Rv_TF_only.gml', relabel=True)
+H37Rv_TF_network = nx.read_gml('H37Rv_TF_only.gml', relabel=True)
 
 print "Loading network - complete"
 
@@ -1579,7 +1582,7 @@ print "Starting analysis"
 
 #N_H_Layers = 2
 
-create_optimized_network(H37Rv_TF_network, input_dataset, 6, 100, 'filter_test_run.csv', '0.8', 'xaa')
+create_optimized_network(H37Rv_TF_network, input_dataset, 6, 100, 'no_layer_run_xaa.csv', '0.6', 'xaa')
 
 print "Analysis complete"
 
